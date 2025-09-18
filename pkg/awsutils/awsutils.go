@@ -598,12 +598,15 @@ func (cache *EC2InstanceMetadataCache) GetAttachedENIs() (eniList []ENIMetadata,
 	}
 	log.Debugf("Total number of interfaces found: %d ", len(macs))
 
-	enis := make([]ENIMetadata, len(macs))
+	enis := make([]ENIMetadata, 0)
 	// retrieve the attached ENIs
-	for i, mac := range macs {
-		enis[i], err = cache.getENIMetadata(mac)
+	for i := range macs {
+		eni, err := cache.getENIMetadata(macs[i])
 		if err != nil {
-			return nil, errors.Wrapf(err, "get attached ENIs: failed to retrieve ENI metadata for ENI: %s", mac)
+			return nil, errors.Wrapf(err, "get attached ENIs: failed to retrieve ENI metadata for ENI: %s", macs[i])
+		}
+		if eni.ENIID != "" {
+			enis = append(enis, eni)
 		}
 	}
 	return enis, nil
@@ -626,6 +629,10 @@ func (cache *EC2InstanceMetadataCache) getENIMetadata(eniMAC string) (ENIMetadat
 	if err != nil {
 		awsAPIErrInc("GetDeviceNumber", err)
 		return ENIMetadata{}, err
+	}
+
+	if os.Getenv("SKIP_METADATA_FOR_SECONDARY_ENI") == "true" && deviceNum != 0 {
+		return ENIMetadata{}, nil
 	}
 
 	primaryMAC, err := cache.imds.GetMAC(ctx)
